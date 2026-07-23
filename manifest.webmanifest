@@ -1,0 +1,17 @@
+{
+  "name": "KEMOS",
+  "short_name": "KEMOS",
+  "description": "A Windows-inspired game desktop for the web.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#071634",
+  "theme_color": "#202020",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
