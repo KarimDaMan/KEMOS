@@ -56,7 +56,7 @@ jobs:
           rm -f debian-gnome/debian-gnome.ext2.c*.txt debian-gnome/debian-gnome.ext2.meta
           split /tmp/debian-gnome.ext2 debian-gnome/debian-gnome.ext2.c -a 6 -b 128k -x --additional-suffix=.txt
           stat -c%s /tmp/debian-gnome.ext2 > debian-gnome/debian-gnome.ext2.meta
-          rm -f /tmp/debian-gnome.ext2
+          sudo rm -f /tmp/debian-gnome.ext2
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
