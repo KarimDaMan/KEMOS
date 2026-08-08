@@ -2,8 +2,7 @@ FROM --platform=linux/i386 docker.io/i386/debian:bookworm-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    apt-get update && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       bash \
       ca-certificates \
