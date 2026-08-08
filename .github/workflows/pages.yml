@@ -1,4 +1,4 @@
-name: Deploy KEMOS to GitHub Pages
+name: Deploy KEMOS + Debian GNOME to GitHub Pages
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -22,13 +22,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+
+      - name: Build Debian GNOME rootfs
+        run: |
+          docker build --platform=linux/386 -t kem-debian-gnome ./debian-gnome
+          CID=$(docker create kem-debian-gnome)
+          echo "CID=$CID" >> "$GITHUB_ENV"
+
+      - name: Create WebVM ext2 image
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y e2fsprogs
+          sudo mkdir -p /mnt/kemroot
+          sudo fallocate -l 1800M /tmp/debian-gnome.ext2
+          sudo mkfs.ext2 -F -r 0 /tmp/debian-gnome.ext2
+          sudo mount -o loop -t ext2 /tmp/debian-gnome.ext2 /mnt/kemroot
+          sudo docker cp -a "$CID":/ /mnt/kemroot/
+          sudo umount /mnt/kemroot
+
+      - name: Split disk for GitHub Pages streaming
+        run: |
+          sudo rm -f debian-gnome/debian-gnome.ext2.c*.txt debian-gnome/debian-gnome.ext2.meta
+          sudo split /tmp/debian-gnome.ext2 debian-gnome/debian-gnome.ext2.c -a 6 -b 128k -x --additional-suffix=.txt
+          stat -c%s /tmp/debian-gnome.ext2 | sudo tee debian-gnome/debian-gnome.ext2.meta >/dev/null
+          sudo chown -R "$USER:$USER" debian-gnome
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
       - name: Upload site
         uses: actions/upload-pages-artifact@v4
         with:
           path: "."
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
