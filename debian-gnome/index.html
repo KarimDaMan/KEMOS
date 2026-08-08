@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111318">
+  <title>KEM Debian GNOME</title>
+  <script src="./serviceWorker.js"></script>
+  <script src="https://cxrtnc.leaningtech.com/1.2.8/cx.js"></script>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#090b0f;color:#f4f5f7}
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#060708}
+    body{display:grid;grid-template-rows:auto 1fr auto}
+    header{min-height:58px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.09);background:rgba(17,19,24,.94);backdrop-filter:blur(18px)}
+    .brand{font-weight:760;letter-spacing:-.025em;white-space:nowrap}
+    .pill{font-size:12px;color:#b8bec9;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);border-radius:999px;padding:5px 9px}
+    .spacer{flex:1}
+    button{border:1px solid rgba(255,255,255,.12);color:#f4f5f7;background:#20242d;border-radius:9px;padding:9px 12px;font-weight:650;cursor:pointer}
+    button:hover{background:#2a303b} button:disabled{opacity:.5;cursor:default}
+    #boot{background:#4d63ff;border-color:#6679ff} #boot:hover{background:#5b6fff}
+    #stage{position:relative;min-width:0;min-height:0;overflow:hidden;background:#030405}
+    #display{display:block;width:100%;height:100%;outline:none;background:#030405}
+    #splash{position:absolute;inset:0;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 25% 0%,rgba(75,98,255,.17),transparent 34rem);transition:opacity .25s ease}
+    #splash.hidden{opacity:0;pointer-events:none}
+    .card{width:min(610px,100%);border:1px solid rgba(255,255,255,.1);background:rgba(18,21,27,.9);backdrop-filter:blur(24px);border-radius:18px;padding:24px;box-shadow:0 24px 90px rgba(0,0,0,.35)}
+    h1{margin:0 0 8px;font-size:clamp(26px,5vw,42px);letter-spacing:-.05em} p{margin:0;color:#bac0cb;line-height:1.5}
+    #log{margin-top:15px;max-height:150px;overflow:auto;white-space:pre-wrap;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#9fa7b5}
+    footer{min-height:34px;display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid rgba(255,255,255,.08);background:#101217;color:#9ca3af;font-size:12px}
+    #dot{width:8px;height:8px;border-radius:50%;background:#777;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+    #dot.ready{background:#57d38c} #dot.busy{background:#f0bf57} #dot.error{background:#ef6666}
+    @media(max-width:700px){.pill{display:none}header{padding-inline:10px}.brand{font-size:14px}button{padding:8px 10px}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">KEM Debian GNOME</div>
+    <div class="pill">Debian Bookworm · GNOME Flashback</div>
+    <div class="spacer"></div>
+    <button id="boot">Boot</button>
+    <button id="reset">Reset VM</button>
+    <button id="fullscreen">Fullscreen</button>
+  </header>
+
+  <main id="stage">
+    <canvas id="display" tabindex="0"></canvas>
+    <div id="splash">
+      <div class="card">
+        <h1>Debian + GNOME in Chrome.</h1>
+        <p>A real 32-bit Debian userspace runs client-side through CheerpX. GNOME renders into this canvas, while your writable changes stay in this browser profile.</p>
+        <div id="log">Initializing GitHub Pages runtime…</div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <span id="dot"></span><span id="status">starting</span><span class="spacer"></span><span>browser VM · isolated from ChromeOS</span>
+  </footer>
+
+<script type="module">
+  const $ = (s) => document.querySelector(s);
+  const canvas = $("#display");
+  const stage = $("#stage");
+  const splash = $("#splash");
+  const bootButton = $("#boot");
+  const statusEl = $("#status");
+  const dot = $("#dot");
+  const log = $("#log");
+  let cx = null;
+  let writable = null;
+  let booting = false;
+
+  function setStatus(text, type="") { statusEl.textContent = text; dot.className = type; }
+  function note(text) { log.textContent += `\n${text}`; log.scrollTop = log.scrollHeight; }
+
+  function fitDisplay() {
+    if (!cx) return;
+    const rect = stage.getBoundingClientRect();
+    let w = Math.max(1024, Math.floor(rect.width));
+    let h = Math.max(768, Math.floor(rect.height));
+    const ratio = Math.max(w / 1920, h / 1200, 1);
+    w = Math.floor(w / ratio); h = Math.floor(h / ratio);
+    try { cx.setKmsCanvas(canvas, w, h); } catch (e) { console.warn(e); }
+  }
+  new ResizeObserver(fitDisplay).observe(stage);
+  canvas.addEventListener("click", () => canvas.focus());
+
+  async function boot() {
+    if (booting || cx) return;
+    booting = true; bootButton.disabled = true;
+    try {
+      setStatus("checking browser", "busy");
+      if (!window.isSecureContext) throw new Error("HTTPS is required.");
+      if (!window.crossOriginIsolated) throw new Error("Cross-origin isolation is not active yet. Reload the page once.");
+      if (typeof CheerpX === "undefined") throw new Error("CheerpX did not load. The runtime CDN may be blocked.");
+
+      setStatus("opening Debian disk", "busy");
+      note("Opening streamed Debian/GNOME disk chunks…");
+      const base = await CheerpX.GitHubDevice.create("debian-gnome.ext2");
+      writable = await CheerpX.IDBDevice.create("kem-debian-gnome-overlay-v3");
+      const root = await CheerpX.OverlayDevice.create(base, writable);
+
+      const mounts = [
+        {type:"ext2", path:"/", dev:root},
+        {type:"devs", path:"/dev"},
+        {type:"devpts", path:"/dev/pts"},
+        {type:"proc", path:"/proc"},
+        {type:"sys", path:"/sys"}
+      ];
+
+      setStatus("starting Debian", "busy");
+      cx = await CheerpX.Linux.create({mounts});
+      fitDisplay();
+      cx.setActivateConsole((vt) => {
+        if (vt === 7) { splash.classList.add("hidden"); setStatus("GNOME running", "ready"); canvas.focus(); }
+      });
+
+      note("Starting Xorg and GNOME Flashback…");
+      splash.classList.add("hidden");
+      const code = await cx.run("/usr/local/bin/start-desktop", [], {
+        env:["HOME=/root","USER=root","LOGNAME=root","SHELL=/bin/bash","LANG=C.UTF-8","LC_ALL=C.UTF-8"],
+        cwd:"/root", uid:0, gid:0
+      });
+      splash.classList.remove("hidden");
+      note(`Desktop exited with code ${code}.`);
+      setStatus(`desktop exited (${code})`, code === 0 ? "ready" : "error");
+    } catch (e) {
+      console.error(e); note(`ERROR: ${e.message || e}`); setStatus("boot failed", "error");
+      splash.classList.remove("hidden"); cx = null; bootButton.disabled = false; booting = false;
+    }
+  }
+
+  $("#fullscreen").addEventListener("click", async () => {
+    try { if (!document.fullscreenElement) await stage.requestFullscreen(); else await document.exitFullscreen(); }
+    catch (e) { note(`Fullscreen error: ${e.message}`); }
+  });
+
+  $("#reset").addEventListener("click", async () => {
+    try {
+      if (!writable) writable = await CheerpX.IDBDevice.create("kem-debian-gnome-overlay-v3");
+      await writable.reset(); location.reload();
+    } catch (e) { note(`Reset error: ${e.message}`); }
+  });
+  bootButton.addEventListener("click", boot);
+
+  if (window.crossOriginIsolated) {
+    setStatus("ready to boot", "ready");
+    note("Browser isolation ready. Auto-booting…");
+    setTimeout(boot, 250);
+  } else {
+    setStatus("preparing secure runtime", "busy");
+    note("The service worker will reload this page once to enable the VM runtime.");
+  }
+</script>
+</body>
+</html>
