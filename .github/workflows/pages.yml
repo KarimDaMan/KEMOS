@@ -12,23 +12,64 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Restore Debian GNOME disk cache
+        id: disk-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            debian-gnome/debian-gnome.ext2.meta
+            debian-gnome/debian-gnome.ext2.c*.txt
+          key: debian-gnome-v4-${{ hashFiles('debian-gnome/Dockerfile', 'debian-gnome/scripts/**') }}
+
+      - name: Build 32-bit Debian GNOME filesystem
+        if: steps.disk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          docker build --platform=i386 -t kem-debian-gnome -f debian-gnome/Dockerfile debian-gnome
+          CONTAINER_ID=$(docker create kem-debian-gnome)
+
+          sudo fallocate -l 900M /tmp/debian-gnome.ext2
+          sudo mkfs.ext2 -F -r 0 /tmp/debian-gnome.ext2
+          sudo mkdir -p /mnt/kem-webvm
+          sudo mount -o loop -t ext2 /tmp/debian-gnome.ext2 /mnt/kem-webvm
+          sudo docker cp -a "$CONTAINER_ID":/ /mnt/kem-webvm/
+          sync
+          sudo umount /mnt/kem-webvm
+          docker rm "$CONTAINER_ID"
+
+      - name: Split disk for CheerpX GitHubDevice
+        if: steps.disk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          rm -f debian-gnome/debian-gnome.ext2.c*.txt debian-gnome/debian-gnome.ext2.meta
+          split /tmp/debian-gnome.ext2 debian-gnome/debian-gnome.ext2.c -a 6 -b 128k -x --additional-suffix=.txt
+          stat -c%s /tmp/debian-gnome.ext2 > debian-gnome/debian-gnome.ext2.meta
+          rm -f /tmp/debian-gnome.ext2
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: "."
+
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload site
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: "."
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
